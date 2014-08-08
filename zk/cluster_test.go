@@ -92,3 +92,40 @@ CONNECTED:
 		}
 	}
 }
+
+func TestCloseConnectionDuringConnect(t *testing.T) {
+	zk, ch, err := Connect([]string{"127.0.0.1:32444"}, time.Second*300)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second)
+	zk.Close()
+	timeout := time.After(10*time.Second)
+	select{
+	case ev := <-ch:
+		if ev.State != StateConnecting {
+			t.Fatalf("Expected to see state StateConnecting, got %s",ev.State)
+		}
+	case <-timeout:
+		t.Fatal("Timeout")
+	}
+	select{
+	case ev,ok := <-ch:
+		if !ok {
+			t.Fatalf("Expected to get a StateDisconnected event but the channel is already closed")
+		}
+		if ev.State != StateDisconnected {
+			t.Fatalf("Expected to see state StateDisconnected, got %s",ev.State)
+		}
+	case <-timeout:
+		t.Fatal("Timeout")
+	}
+	select{
+	case _,ok := <-ch:
+		if ok {
+			t.Fatalf("Expected the channel to become closed but it wasn't")
+		}
+	case <-timeout:
+		t.Fatal("Timeout")
+	}
+}

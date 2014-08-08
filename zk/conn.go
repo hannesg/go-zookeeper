@@ -169,16 +169,24 @@ func (c *Conn) setState(state State) {
 	}
 }
 
-func (c *Conn) connect() {
+func (c *Conn) connect() bool {
 	c.serverIndex = (c.serverIndex + 1) % len(c.servers)
 	startIndex := c.serverIndex
 	c.setState(StateConnecting)
 	for {
+
+		select {
+		case <-c.shouldQuit:
+			c.setState(StateDisconnected)
+			return false
+		default:
+		}
+
 		zkConn, err := c.dialer("tcp", c.servers[c.serverIndex], c.connectTimeout)
 		if err == nil {
 			c.conn = zkConn
 			c.setState(StateConnected)
-			return
+			return true
 		}
 
 		log.Printf("Failed to connect to %s: %+v", c.servers[c.serverIndex], err)
@@ -193,7 +201,9 @@ func (c *Conn) connect() {
 
 func (c *Conn) loop() {
 	for {
-		c.connect()
+		if !c.connect() {
+			return
+		}
 		err := c.authenticate()
 		switch {
 		case err == ErrSessionExpired:
